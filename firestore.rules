@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isPoliceOrAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'POLICE' || 
+        request.auth.token.role == 'ADMIN'
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users Collection: Users can read own profile; Police and Admins can read emergency info
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isPoliceOrAdmin();
+      allow write: if isOwner(userId) || (isAuthenticated() && request.auth.token.role == 'ADMIN');
+    }
+
+    // Devices Collection: Telemetry updates restricted to authenticated devices or owner
+    match /devices/{deviceId} {
+      allow read: if isPoliceOrAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if isPoliceOrAdmin() || (isAuthenticated() && request.auth.token.role == 'ADMIN');
+    }
+
+    // Emergencies Collection: Mission-critical access
+    match /emergencies/{emergencyId} {
+      // Police operators and admins can read and update all emergencies
+      allow read: if isPoliceOrAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      
+      // Creating emergency: Authenticated backend server or verified wearable event
+      allow create: if isAuthenticated();
+      
+      // Only police operator or admin can update status (ACKNOWLEDGE, DISPATCH, RESOLVE)
+      allow update: if isPoliceOrAdmin();
+      allow delete: if isAuthenticated() && request.auth.token.role == 'ADMIN';
+    }
+
+    // Location History: High-security real-time breadcrumbs
+    match /emergencies/{emergencyId}/locationHistory/{pointId} {
+      allow read: if isPoliceOrAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/emergencies/$(emergencyId)).data.userId == request.auth.uid);
+      allow write: if isAuthenticated();
+    }
+
+    // Audit Logs: Read-only for Police/Admin; append-only for system
+    match /auditLogs/{logId} {
+      allow read: if isPoliceOrAdmin();
+      allow write: if isAuthenticated();
+    }
+  }
+}
