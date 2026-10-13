@@ -4,7 +4,9 @@
   "private": true,
   "description": "GuardianBand Mission Critical Real-time Emergency Response Ecosystem",
   "scripts": {
-    "install:all": "npm --prefix backend install && npm --prefix websites/police-control-room install && npm --prefix websites/central-dashboard install && npm --prefix websites/guardian-portal install && npm --prefix websites/device-simulator install",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
+    "start": "npm --prefix backend start",
+    "install:all": "npm --prefix backend install && npm --prefix websites/police-control-room install && npm --prefix websites/central-dashboard install && npm --prefix websites/guardian-portal install && npm --prefix websites/device-simulator install && npm --prefix frontend install",
     "backend": "npm --prefix backend start",
     "dev:backend": "npm --prefix backend run dev",
     "dev:police": "npm --prefix websites/police-control-room run dev",

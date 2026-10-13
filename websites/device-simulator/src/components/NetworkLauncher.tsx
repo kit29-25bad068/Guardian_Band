@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { 
   Globe, Siren, LayoutDashboard, UserCheck, Watch, 
-  ExternalLink, X, Zap, ChevronRight, Layers 
+  ExternalLink, X, Zap, ChevronRight, Layers, Server, Check, RefreshCw
 } from 'lucide-react';
+import { getBackendUrl, setBackendUrl } from '../services/api';
 
 interface NetworkLauncherProps {
   currentSite?: 'POLICE' | 'CENTRAL' | 'GUARDIAN' | 'SIMULATOR' | 'HUB';
@@ -10,14 +11,19 @@ interface NetworkLauncherProps {
 
 export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [backendInput, setBackendInput] = useState(() => getBackendUrl());
+  const [isSaved, setIsSaved] = useState(false);
+
+  const isLocalDevPorts = typeof window !== 'undefined' && 
+    (window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175' || window.location.port === '5176');
 
   const websites = [
     {
       id: 'POLICE',
       name: 'Police Emergency Control Room',
       shortName: 'Police Control Room',
-      path: 'http://localhost:5174',
-      portUrl: 'http://localhost:5174',
+      path: '/police',
+      portUrl: isLocalDevPorts && window.location.port !== '5174' ? 'http://localhost:5174' : '/police',
       icon: Siren,
       themeColor: 'from-rose-600 to-red-800',
       badgeBg: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
@@ -28,8 +34,8 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       id: 'CENTRAL',
       name: 'Central Control Dashboard',
       shortName: 'Central Dashboard',
-      path: 'http://localhost:5173',
-      portUrl: 'http://localhost:5173',
+      path: '/central',
+      portUrl: isLocalDevPorts && window.location.port !== '5173' ? 'http://localhost:5173' : '/central',
       icon: LayoutDashboard,
       themeColor: 'from-cyan-600 to-blue-800',
       badgeBg: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
@@ -40,8 +46,8 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       id: 'GUARDIAN',
       name: 'Guardian & Wearer Portal',
       shortName: 'Guardian Portal',
-      path: 'http://localhost:5175',
-      portUrl: 'http://localhost:5175',
+      path: '/guardian',
+      portUrl: isLocalDevPorts && window.location.port !== '5175' ? 'http://localhost:5175' : '/guardian',
       icon: UserCheck,
       themeColor: 'from-emerald-600 to-teal-800',
       badgeBg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -52,8 +58,8 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       id: 'SIMULATOR',
       name: 'Wearable Device Simulator',
       shortName: 'Device Simulator',
-      path: 'http://localhost:5176',
-      portUrl: 'http://localhost:5176',
+      path: '/simulator',
+      portUrl: isLocalDevPorts && window.location.port !== '5176' ? 'http://localhost:5176' : '/simulator',
       icon: Watch,
       themeColor: 'from-purple-600 to-indigo-800',
       badgeBg: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
@@ -62,9 +68,24 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
     }
   ];
 
+  const handleSaveBackend = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBackendUrl(backendInput);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  const handleResetBackend = () => {
+    setBackendInput('');
+    setBackendUrl('');
+  };
+
   const handleOpenSite = (targetUrl: string, newWindow: boolean = false) => {
     if (newWindow) {
       window.open(targetUrl, '_blank');
+    } else if (targetUrl.startsWith('/')) {
+      window.history.pushState({}, '', targetUrl);
+      window.dispatchEvent(new Event('popstate'));
     } else {
       window.location.href = targetUrl;
     }
@@ -250,11 +271,53 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
               })}
             </div>
 
+            {/* Backend Server Sync Settings (For Vercel & Multi-Device deployments) */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                  <Server className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-mono font-bold text-slate-200">Real-Time Backend Server</h4>
+                  <p className="text-[11px] text-slate-400">
+                    {backendInput ? `Connected: ${backendInput}` : 'Standalone Preview Mode (Default seed telemetry active)'}
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveBackend} className="flex items-center gap-2 w-full md:w-auto">
+                <input
+                  type="text"
+                  value={backendInput}
+                  onChange={(e) => setBackendInput(e.target.value)}
+                  placeholder="https://your-backend.onrender.com"
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 w-full md:w-64"
+                />
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-mono font-bold shrink-0 transition flex items-center gap-1 cursor-pointer"
+                >
+                  {isSaved ? <Check className="w-3.5 h-3.5 text-white" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  <span>{isSaved ? 'Saved' : 'Connect'}</span>
+                </button>
+                {backendInput && (
+                  <button
+                    type="button"
+                    onClick={handleResetBackend}
+                    className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-mono shrink-0 transition cursor-pointer"
+                    title="Reset to local/standalone preview"
+                  >
+                    Reset
+                  </button>
+                )}
+              </form>
+            </div>
+
             {/* Modal Footer */}
             <div className="border-t border-slate-800/80 pt-3 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-slate-500 gap-2">
-              <span>All 4 websites communicate in real time through the shared Node.js + Socket.IO server on port 5000.</span>
+              <span>All 4 websites are designed to communicate in real time across laptops or over cloud deployment.</span>
               <button
-                onClick={() => handleOpenSite('http://localhost:5000/', false)}
+                onClick={() => handleOpenSite('/', false)}
                 className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
               >
                 Go to Network Hub Directory

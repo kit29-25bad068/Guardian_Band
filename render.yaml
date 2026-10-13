@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: guardianband-backend
+    env: node
+    plan: free
+    buildCommand: npm --prefix backend install
+    startCommand: node backend/src/server.js
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: DEVICE_AUTH_SECRET
+        value: GUARDIAN_DEV_SECRET_TOKEN_2026

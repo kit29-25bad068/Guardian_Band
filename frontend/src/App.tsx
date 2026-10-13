@@ -41,8 +41,24 @@ export const App: React.FC = () => {
     };
     window.addEventListener('popstate', handlePopState);
 
+    // Smooth client-side navigation for internal links
+    const handleDocumentClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement)?.closest('a');
+      if (target) {
+        const href = target.getAttribute('href');
+        if (href && href.startsWith('/') && !target.hasAttribute('target') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          e.preventDefault();
+          window.history.pushState({}, '', href);
+          setActiveSite(resolveSiteFromLocation());
+          window.scrollTo(0, 0);
+        }
+      }
+    };
+    document.addEventListener('click', handleDocumentClick);
+
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      document.removeEventListener('click', handleDocumentClick);
     };
   }, []);
 
