@@ -1,29 +1,75 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Globe, Siren, LayoutDashboard, UserCheck, Watch, 
-  ExternalLink, X, Zap, ChevronRight, Layers, Server, Check, RefreshCw
+  ExternalLink, X, Zap, ChevronRight, Layers, Server, Check, RefreshCw, Link as LinkIcon
 } from 'lucide-react';
-import { getBackendUrl, setBackendUrl } from '../services/api';
+import { getBackendUrl, setBackendUrl, socket } from '../services/api';
 
 interface NetworkLauncherProps {
-  currentSite?: 'POLICE' | 'CENTRAL' | 'GUARDIAN' | 'SIMULATOR' | 'HUB';
+  currentSite?: 'POLICE' | 'CENTRAL' | 'GUARDIAN' | 'SIMULATOR';
+}
+
+// Resolver for each separate website's URL
+export function getSiteUrl(siteId: 'POLICE' | 'CENTRAL' | 'GUARDIAN' | 'SIMULATOR', currentSite?: string): string {
+  if (typeof window !== 'undefined') {
+    if (siteId === currentSite) {
+      return window.location.origin;
+    }
+    const saved = localStorage.getItem(`GB_URL_${siteId}`);
+    if (saved) return saved;
+  }
+
+  switch (siteId) {
+    case 'POLICE':
+      return import.meta.env.VITE_POLICE_URL || 'http://localhost:5174';
+    case 'CENTRAL':
+      return import.meta.env.VITE_CENTRAL_URL || 'http://localhost:5173';
+    case 'GUARDIAN':
+      return import.meta.env.VITE_GUARDIAN_URL || 'http://localhost:5175';
+    case 'SIMULATOR':
+      return import.meta.env.VITE_SIMULATOR_URL || 'http://localhost:5176';
+  }
+}
+
+export function saveSiteUrl(siteId: 'POLICE' | 'CENTRAL' | 'GUARDIAN' | 'SIMULATOR', url: string) {
+  if (typeof window !== 'undefined') {
+    if (url.trim()) {
+      localStorage.setItem(`GB_URL_${siteId}`, url.trim().replace(/\/$/, ''));
+    } else {
+      localStorage.removeItem(`GB_URL_${siteId}`);
+    }
+  }
 }
 
 export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
   const [backendInput, setBackendInput] = useState(() => getBackendUrl());
   const [isSaved, setIsSaved] = useState(false);
+  const [isSocketConnected, setIsSocketConnected] = useState(socket.connected);
 
-  const isLocalDevPorts = typeof window !== 'undefined' && 
-    (window.location.port === '5173' || window.location.port === '5174' || window.location.port === '5175' || window.location.port === '5176');
+  const [policeUrlInput, setPoliceUrlInput] = useState(() => getSiteUrl('POLICE', currentSite));
+  const [centralUrlInput, setCentralUrlInput] = useState(() => getSiteUrl('CENTRAL', currentSite));
+  const [guardianUrlInput, setGuardianUrlInput] = useState(() => getSiteUrl('GUARDIAN', currentSite));
+  const [simulatorUrlInput, setSimulatorUrlInput] = useState(() => getSiteUrl('SIMULATOR', currentSite));
+
+  useEffect(() => {
+    const onConnect = () => setIsSocketConnected(true);
+    const onDisconnect = () => setIsSocketConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
 
   const websites = [
     {
-      id: 'POLICE',
+      id: 'POLICE' as const,
       name: 'Police Emergency Control Room',
       shortName: 'Police Control Room',
-      path: '/police',
-      portUrl: isLocalDevPorts && window.location.port !== '5174' ? 'http://localhost:5174' : '/police',
+      url: getSiteUrl('POLICE', currentSite),
       icon: Siren,
       themeColor: 'from-rose-600 to-red-800',
       badgeBg: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
@@ -31,11 +77,10 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       role: 'Emergency Dispatchers & Law Enforcement'
     },
     {
-      id: 'CENTRAL',
+      id: 'CENTRAL' as const,
       name: 'Central Control Dashboard',
       shortName: 'Central Dashboard',
-      path: '/central',
-      portUrl: isLocalDevPorts && window.location.port !== '5173' ? 'http://localhost:5173' : '/central',
+      url: getSiteUrl('CENTRAL', currentSite),
       icon: LayoutDashboard,
       themeColor: 'from-cyan-600 to-blue-800',
       badgeBg: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
@@ -43,11 +88,10 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       role: 'Operations & Fleet Command'
     },
     {
-      id: 'GUARDIAN',
+      id: 'GUARDIAN' as const,
       name: 'Guardian & Wearer Portal',
       shortName: 'Guardian Portal',
-      path: '/guardian',
-      portUrl: isLocalDevPorts && window.location.port !== '5175' ? 'http://localhost:5175' : '/guardian',
+      url: getSiteUrl('GUARDIAN', currentSite),
       icon: UserCheck,
       themeColor: 'from-emerald-600 to-teal-800',
       badgeBg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -55,16 +99,15 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       role: 'Wearer & Family Emergency Contacts'
     },
     {
-      id: 'SIMULATOR',
+      id: 'SIMULATOR' as const,
       name: 'Wearable Device Simulator',
       shortName: 'Device Simulator',
-      path: '/simulator',
-      portUrl: isLocalDevPorts && window.location.port !== '5176' ? 'http://localhost:5176' : '/simulator',
+      url: getSiteUrl('SIMULATOR', currentSite),
       icon: Watch,
       themeColor: 'from-purple-600 to-indigo-800',
       badgeBg: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-      description: 'Virtual ESP32 smartwatch hardware model with 2-stage 5s deliberate hold SOS, 15s countdown, MAX30102 biosensors & GPS.',
-      role: 'Hardware Testing & Demonstration'
+      description: 'Virtual ESP32 smartwatch hardware model with 3-stage SOS trigger, 15s timer, MAX30102 biosensors & GPS.',
+      role: 'Hardware Testing & Wearer Simulation'
     }
   ];
 
@@ -80,12 +123,22 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
     setBackendUrl('');
   };
 
+  const handleSaveUrls = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveSiteUrl('POLICE', policeUrlInput);
+    saveSiteUrl('CENTRAL', centralUrlInput);
+    saveSiteUrl('GUARDIAN', guardianUrlInput);
+    saveSiteUrl('SIMULATOR', simulatorUrlInput);
+    setIsSaved(true);
+    setTimeout(() => {
+      setIsSaved(false);
+      setShowConfig(false);
+    }, 1200);
+  };
+
   const handleOpenSite = (targetUrl: string, newWindow: boolean = false) => {
     if (newWindow) {
       window.open(targetUrl, '_blank');
-    } else if (targetUrl.startsWith('/')) {
-      window.history.pushState({}, '', targetUrl);
-      window.dispatchEvent(new Event('popstate'));
     } else {
       window.location.href = targetUrl;
     }
@@ -93,36 +146,31 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
   };
 
   const handleLaunchAllFour = () => {
-    // Open 4 distinct windows sized and positioned across the screen
     const screenW = window.screen.availWidth || 1920;
     const screenH = window.screen.availHeight || 1080;
     const halfW = Math.floor(screenW / 2);
     const halfH = Math.floor(screenH / 2);
 
-    // 1. Device Simulator (Top Left)
     window.open(
-      '/simulator',
+      getSiteUrl('SIMULATOR', currentSite),
       'GB_Simulator_Win',
       `left=0,top=0,width=${halfW},height=${halfH},resizable=yes,scrollbars=yes`
     );
 
-    // 2. Central Dashboard (Top Right)
     window.open(
-      '/central',
+      getSiteUrl('CENTRAL', currentSite),
       'GB_Central_Win',
       `left=${halfW},top=0,width=${halfW},height=${halfH},resizable=yes,scrollbars=yes`
     );
 
-    // 3. Police Control Room (Bottom Left)
     window.open(
-      '/police',
+      getSiteUrl('POLICE', currentSite),
       'GB_Police_Win',
       `left=0,top=${halfH},width=${halfW},height=${halfH},resizable=yes,scrollbars=yes`
     );
 
-    // 4. Guardian Portal (Bottom Right)
     window.open(
-      '/guardian',
+      getSiteUrl('GUARDIAN', currentSite),
       'GB_Guardian_Win',
       `left=${halfW},top=${halfH},width=${halfW},height=${halfH},resizable=yes,scrollbars=yes`
     );
@@ -136,7 +184,7 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
       <button
         onClick={() => setIsOpen(true)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs font-mono font-bold transition cursor-pointer shadow hover:border-cyan-500/50"
-        title="Switch or launch any of the 4 GuardianBand websites"
+        title="Switch to any of the 4 interconnected websites"
       >
         <Globe className="w-3.5 h-3.5 text-cyan-400" />
         <span className="hidden sm:inline">4 WEBSITES NETWORK</span>
@@ -157,22 +205,37 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-mono text-cyan-400 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
-                      DISTRIBUTED ECOSYSTEM
+                      INTERCONNECTED NETWORK
                     </span>
-                    <span className="text-xs text-slate-400 font-mono">4 STANDALONE WEBSITES</span>
+                    <span className="text-xs text-slate-400 font-mono">4 DEDICATED WEBSITES</span>
                   </div>
                   <h2 className="text-xl md:text-2xl font-black text-white tracking-tight mt-0.5">
-                    GuardianBand Multi-Website Network
+                    GuardianBand Distributed Ecosystem
                   </h2>
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsOpen(false)}
-                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowConfig(!showConfig)}
+                  className={`p-1.5 rounded-lg border text-xs font-mono flex items-center gap-1 transition cursor-pointer ${
+                    showConfig 
+                      ? 'bg-cyan-950 text-cyan-400 border-cyan-700' 
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-800'
+                  }`}
+                  title="Configure URLs for the 4 separate websites"
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">URL Settings</span>
+                </button>
+
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Launch All Banner */}
@@ -180,10 +243,10 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
               <div>
                 <div className="flex items-center gap-2 font-mono text-xs font-bold text-purple-300">
                   <Zap className="w-4 h-4 text-amber-300 animate-bounce" />
-                  <span>DEMO & TEST MODE: FULL ECOSYSTEM</span>
+                  <span>INTERCONNECTED DEMO: OPEN ALL 4 WEBSITES</span>
                 </div>
                 <p className="text-xs text-slate-300 mt-1">
-                  Open all 4 websites in 4 tiled windows side-by-side to watch the complete end-to-end emergency flow in real time.
+                  Launch each website in its own tiled browser window. Trigger an SOS on the Device Simulator to see it broadcast instantly to Central and Police Control in real time.
                 </p>
               </div>
 
@@ -195,7 +258,74 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
               </button>
             </div>
 
-            {/* 4 Websites Grid */}
+            {/* URL Configuration Drawer (If Opened) */}
+            {showConfig && (
+              <form onSubmit={handleSaveUrls} className="bg-slate-950/90 border border-cyan-800/60 rounded-xl p-4 space-y-3 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold text-cyan-400 uppercase">
+                    Configure Live URLs for the 4 Separate Websites
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Paste your Vercel or local URLs below so cross-website links jump directly:
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+                  <div>
+                    <label className="text-slate-400 block mb-1">🚔 Police Control Room URL:</label>
+                    <input
+                      type="text"
+                      value={policeUrlInput}
+                      onChange={(e) => setPoliceUrlInput(e.target.value)}
+                      placeholder="http://localhost:5174 or https://police.vercel.app"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-1">🖥️ Central Dashboard URL:</label>
+                    <input
+                      type="text"
+                      value={centralUrlInput}
+                      onChange={(e) => setCentralUrlInput(e.target.value)}
+                      placeholder="http://localhost:5173 or https://central.vercel.app"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-1">🛡️ Guardian Portal URL:</label>
+                    <input
+                      type="text"
+                      value={guardianUrlInput}
+                      onChange={(e) => setGuardianUrlInput(e.target.value)}
+                      placeholder="http://localhost:5175 or https://guardian.vercel.app"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-slate-400 block mb-1">⌚ Device Simulator URL:</label>
+                    <input
+                      type="text"
+                      value={simulatorUrlInput}
+                      onChange={(e) => setSimulatorUrlInput(e.target.value)}
+                      placeholder="http://localhost:5176 or https://simulator.vercel.app"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-200"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-mono text-xs font-bold transition flex items-center gap-1"
+                  >
+                    {isSaved ? <Check className="w-3.5 h-3.5" /> : null}
+                    <span>{isSaved ? 'URLs Saved!' : 'Save Website URLs'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* 4 Websites Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {websites.map((site) => {
                 const IconComponent = site.icon;
@@ -218,17 +348,19 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
                           </div>
                           <div>
                             <h3 className="text-sm font-bold text-white font-mono">{site.shortName}</h3>
-                            <span className="text-[10px] font-mono text-slate-400">{site.path}</span>
+                            <span className="text-[10px] font-mono text-cyan-400 truncate block max-w-[200px]" title={site.url}>
+                              {site.url}
+                            </span>
                           </div>
                         </div>
 
                         {isCurrent ? (
-                          <span className="text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 px-2 py-0.5 rounded">
-                            CURRENT
+                          <span className="text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 px-2 py-0.5 rounded animate-pulse">
+                            THIS WEBSITE
                           </span>
                         ) : (
                           <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${site.badgeBg}`}>
-                            STANDALONE
+                            STANDALONE SITE
                           </span>
                         )}
                       </div>
@@ -238,14 +370,14 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
                       </p>
 
                       <div className="mt-2 text-[11px] font-mono text-slate-500">
-                        Target Audience: <b className="text-slate-400">{site.role}</b>
+                        Designated For: <b className="text-slate-400">{site.role}</b>
                       </div>
                     </div>
 
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2 pt-4 mt-3 border-t border-slate-800/80">
                       <button
-                        onClick={() => handleOpenSite(site.portUrl, false)}
+                        onClick={() => handleOpenSite(site.url, false)}
                         className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-mono font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
                           isCurrent
                             ? 'bg-slate-800 text-slate-400 cursor-default'
@@ -253,17 +385,17 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
                         }`}
                         disabled={isCurrent}
                       >
-                        <span>Open Here</span>
+                        <span>{isCurrent ? 'Current Website' : 'Go to Website'}</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
 
                       <button
-                        onClick={() => handleOpenSite(site.portUrl, true)}
+                        onClick={() => handleOpenSite(site.url, true)}
                         className="py-1.5 px-3 rounded-lg text-xs font-mono font-bold bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-800/60 text-cyan-300 flex items-center justify-center gap-1.5 transition cursor-pointer shadow"
                         title="Open in a separate browser window/tab"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
-                        <span>New Window</span>
+                        <span>New Tab</span>
                       </button>
                     </div>
                   </div>
@@ -271,16 +403,29 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
               })}
             </div>
 
-            {/* Backend Server Sync Settings (For Vercel & Multi-Device deployments) */}
+            {/* Shared Backend Connection Bar (Interconnection Engine) */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3 w-full md:w-auto">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                  <Server className="w-4 h-4 text-emerald-400" />
+                <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${
+                  isSocketConnected 
+                    ? 'bg-emerald-500/20 border-emerald-500/30' 
+                    : 'bg-amber-500/20 border-amber-500/30'
+                }`}>
+                  <Server className={`w-4 h-4 ${isSocketConnected ? 'text-emerald-400' : 'text-amber-400'}`} />
                 </div>
                 <div>
-                  <h4 className="text-xs font-mono font-bold text-slate-200">Real-Time Backend Server</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-mono font-bold text-slate-200">Shared Real-Time Event Bus</h4>
+                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                      isSocketConnected 
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
+                        : 'bg-amber-500/20 text-amber-400 border-amber-500/40'
+                    }`}>
+                      {isSocketConnected ? 'CONNECTED' : 'STANDALONE MODE'}
+                    </span>
+                  </div>
                   <p className="text-[11px] text-slate-400">
-                    {backendInput ? `Connected: ${backendInput}` : 'Standalone Preview Mode (Default seed telemetry active)'}
+                    {backendInput ? `Backend: ${backendInput}` : 'All 4 websites synchronize events through this server URL.'}
                   </p>
                 </div>
               </div>
@@ -298,14 +443,14 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
                   className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-mono font-bold shrink-0 transition flex items-center gap-1 cursor-pointer"
                 >
                   {isSaved ? <Check className="w-3.5 h-3.5 text-white" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  <span>{isSaved ? 'Saved' : 'Connect'}</span>
+                  <span>{isSaved ? 'Saved' : 'Sync All'}</span>
                 </button>
                 {backendInput && (
                   <button
                     type="button"
                     onClick={handleResetBackend}
                     className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-mono shrink-0 transition cursor-pointer"
-                    title="Reset to local/standalone preview"
+                    title="Reset to local backend"
                   >
                     Reset
                   </button>
@@ -315,13 +460,10 @@ export const NetworkLauncher: React.FC<NetworkLauncherProps> = ({ currentSite })
 
             {/* Modal Footer */}
             <div className="border-t border-slate-800/80 pt-3 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-slate-500 gap-2">
-              <span>All 4 websites are designed to communicate in real time across laptops or over cloud deployment.</span>
-              <button
-                onClick={() => handleOpenSite('/', false)}
-                className="text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
-              >
-                Go to Network Hub Directory
-              </button>
+              <span>Each of the 4 websites runs autonomously, interconnected via the central Socket.IO WebSocket bus.</span>
+              <span className="text-cyan-400">
+                Active Website: <b>{currentSite || 'STANDALONE'}</b>
+              </span>
             </div>
 
           </div>
